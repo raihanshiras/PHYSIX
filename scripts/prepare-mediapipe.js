@@ -20,6 +20,8 @@ cpSync(source, destination, { recursive: true });
 const requiredFiles = [
   "vision_wasm_internal.js",
   "vision_wasm_internal.wasm",
+  "vision_wasm_nosimd_internal.js",
+  "vision_wasm_nosimd_internal.wasm",
 ];
 
 for (const file of requiredFiles) {
