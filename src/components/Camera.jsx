@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { startCamera, stopCamera } from "../engines/camera";
 import { createHandLandmarker } from "../engines/handTracking";
 import { createGestureTracker } from "../engines/gestureTracking";
+import { createPerformanceMonitor } from "../engines/performanceMonitor";
 import "./Camera.css";
 
 const HAND_CONNECTIONS = [
@@ -13,6 +14,19 @@ const HAND_CONNECTIONS = [
   [0, 17],
 ];
 
+const EMPTY_METRICS = {
+  cameraFps: 0,
+  inferenceFps: 0,
+  latestLatency: 0,
+  averageLatency: 0,
+  sampleCount: 0,
+  handCount: 0,
+  landmarkCount: 0,
+  palmX: null,
+  palmY: null,
+  palmVelocity: null,
+};
+
 export default function Camera() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -21,12 +35,18 @@ export default function Camera() {
   const animationRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
   const gestureTrackerRef = useRef(createGestureTracker());
+  const performanceMonitorRef = useRef(createPerformanceMonitor());
+  const metricsRef = useRef({ ...EMPTY_METRICS });
+  const lastPublishRef = useRef(0);
+  const previousPalmRef = useRef(null);
 
   const [status, setStatus] = useState("inactive");
   const [errorMessage, setErrorMessage] = useState("");
   const [visionStatus, setVisionStatus] = useState("not-started");
   const [handInfo, setHandInfo] = useState(null);
   const [lowLightView, setLowLightView] = useState(true);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [metrics, setMetrics] = useState({ ...EMPTY_METRICS });
 
   async function enableCamera() {
     if (streamRef.current) return;
@@ -36,6 +56,8 @@ export default function Camera() {
     try {
       const stream = await startCamera(videoRef.current);
       streamRef.current = stream;
+      const videoTrack = stream.getVideoTracks()[0];
+      metricsRef.current.cameraFps = videoTrack?.getSettings?.().frameRate ?? 0;
       stream.getVideoTracks().forEach((track) => {
         track.addEventListener("ended", () => {
           if (streamRef.current === stream) {
@@ -44,6 +66,7 @@ export default function Camera() {
           }
         }, { once: true });
       });
+      setMetrics({ ...metricsRef.current });
       setStatus("active");
     } catch (error) {
       console.error("Unable to start camera:", error);
@@ -59,6 +82,10 @@ export default function Camera() {
     setStatus("inactive");
     setVisionStatus("not-started");
     setHandInfo(null);
+    performanceMonitorRef.current.reset();
+    previousPalmRef.current = null;
+    metricsRef.current = { ...EMPTY_METRICS };
+    setMetrics({ ...EMPTY_METRICS });
     clearOverlay();
   }
 
@@ -66,6 +93,16 @@ export default function Camera() {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (context) context.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function publishMetrics(now) {
+    if (now - lastPublishRef.current < 200) return;
+    lastPublishRef.current = now;
+    const performance = performanceMonitorRef.current.snapshot();
+    setMetrics({
+      ...metricsRef.current,
+      ...performance,
+    });
   }
 
   const isActive = status === "active";
@@ -114,31 +151,62 @@ export default function Camera() {
           canvas.height = video.videoHeight;
         }
 
+        const inferenceStart = performance.now();
         const result = landmarker.detectForVideo(video, performance.now());
-        drawHands(canvas, result.landmarks ?? []);
+        const inferenceEnd = performance.now();
+        performanceMonitorRef.current.recordInference(inferenceEnd - inferenceStart, inferenceEnd);
 
-        const firstHand = result.landmarks?.[0];
+        const hands = result.landmarks ?? [];
+        drawHands(canvas, hands);
+
+        const firstHand = hands[0];
+        metricsRef.current.handCount = hands.length;
+        metricsRef.current.landmarkCount = hands.reduce((total, hand) => total + hand.length, 0);
+
         if (firstHand) {
           const palm = getPalmCenter(firstHand);
-          setHandInfo((previous) => {
-            const next = {
-              state: gestureTrackerRef.current.update(firstHand),
-              x: Math.round(palm.x * 100),
-              y: Math.round(palm.y * 100),
-              count: result.landmarks.length,
-            };
-            if (
-              previous?.state === next.state &&
-              previous?.x === next.x &&
-              previous?.y === next.y &&
-              previous?.count === next.count
-            ) return previous;
-            return next;
-          });
+          const now = performance.now();
+          const previousPalm = previousPalmRef.current;
+          let velocity = null;
+
+          if (previousPalm) {
+            const elapsedSeconds = (now - previousPalm.time) / 1000;
+            if (elapsedSeconds > 0) {
+              const dx = (palm.x - previousPalm.x) * 100;
+              const dy = (palm.y - previousPalm.y) * 100;
+              velocity = Math.hypot(dx, dy) / elapsedSeconds;
+            }
+          }
+
+          previousPalmRef.current = { x: palm.x, y: palm.y, time: now };
+          metricsRef.current.palmX = Math.round(palm.x * 100);
+          metricsRef.current.palmY = Math.round(palm.y * 100);
+          metricsRef.current.palmVelocity = velocity === null ? null : Number(velocity.toFixed(1));
+
+          const nextHandInfo = {
+            state: gestureTrackerRef.current.update(firstHand, now),
+            x: Math.round(palm.x * 100),
+            y: Math.round(palm.y * 100),
+            count: hands.length,
+          };
+          setHandInfo((previous) => (
+            previous?.state === nextHandInfo.state &&
+            previous?.x === nextHandInfo.x &&
+            previous?.y === nextHandInfo.y &&
+            previous?.count === nextHandInfo.count
+              ? previous
+              : nextHandInfo
+          ));
         } else {
+          previousPalmRef.current = null;
+          metricsRef.current.palmX = null;
+          metricsRef.current.palmY = null;
+          metricsRef.current.palmVelocity = null;
           gestureTrackerRef.current.reset();
           setHandInfo(null);
         }
+
+        publishMetrics(inferenceEnd);
       }
 
       animationRef.current = requestAnimationFrame(detectFrame);
@@ -154,6 +222,7 @@ export default function Camera() {
       landmarkerRef.current = null;
       lastVideoTimeRef.current = -1;
       gestureTrackerRef.current.reset();
+      previousPalmRef.current = null;
       clearOverlay();
     };
   }, [isActive]);
@@ -183,6 +252,16 @@ export default function Camera() {
           >
             <span className="filter-toggle-dot" />
             LOW-LIGHT {lowLightView ? "ON" : "OFF"}
+          </button>
+          <button
+            className={dashboardOpen ? "dashboard-toggle is-on" : "dashboard-toggle"}
+            type="button"
+            onClick={() => setDashboardOpen((open) => !open)}
+            aria-expanded={dashboardOpen}
+            aria-controls="vision-dashboard"
+          >
+            <span className="dashboard-toggle-icon">▦</span>
+            {dashboardOpen ? "HIDE DASHBOARD" : "SHOW DASHBOARD"}
           </button>
           <span className="camera-resolution">LIVE INPUT / VIDEO</span>
         </div>
@@ -217,6 +296,48 @@ export default function Camera() {
         </div>
       )}
 
+      {dashboardOpen && (
+        <section className="vision-dashboard" id="vision-dashboard" aria-label="Vision performance dashboard">
+          <div className="dashboard-heading">
+            <div>
+              <p className="dashboard-eyebrow">LIVE TELEMETRY</p>
+              <h2>Vision dashboard</h2>
+            </div>
+            <span className={isActive && visionStatus === "ready" ? "dashboard-live" : "dashboard-idle"}>
+              <span /> {isActive && visionStatus === "ready" ? "LIVE" : "STANDBY"}
+            </span>
+          </div>
+
+          <div className="dashboard-metrics-grid">
+            <MetricCard label="INFERENCE FPS" value={isActive ? metrics.inferenceFps.toFixed(1) : "—"} unit="frames / sec" accent />
+            <MetricCard label="LATEST LATENCY" value={isActive && metrics.sampleCount ? metrics.latestLatency.toFixed(1) : "—"} unit="milliseconds" />
+            <MetricCard label="AVG. LATENCY" value={isActive && metrics.sampleCount ? metrics.averageLatency.toFixed(1) : "—"} unit={`last ${metrics.sampleCount} samples`} />
+            <MetricCard label="CAMERA FPS" value={isActive && metrics.cameraFps ? metrics.cameraFps.toFixed(0) : "—"} unit="reported by camera" />
+            <MetricCard label="HANDS DETECTED" value={isActive ? String(metrics.handCount) : "—"} unit="visible hands" />
+            <MetricCard label="LANDMARKS" value={isActive ? String(metrics.landmarkCount) : "—"} unit="21 per detected hand" />
+          </div>
+
+          <div className="dashboard-detail-grid">
+            <div className="dashboard-detail">
+              <span className="readout-label">PALM COORDINATES</span>
+              <strong>{isActive && metrics.palmX !== null ? `X ${metrics.palmX}%  /  Y ${metrics.palmY}%` : "—"}</strong>
+              <span className="dashboard-detail-note">Normalized position in camera frame</span>
+            </div>
+            <div className="dashboard-detail">
+              <span className="readout-label">PALM SPEED</span>
+              <strong>{isActive && metrics.palmVelocity !== null ? `${metrics.palmVelocity} %/s` : "—"}</strong>
+              <span className="dashboard-detail-note">2D image-plane speed, not real-world speed</span>
+            </div>
+            <div className="dashboard-detail">
+              <span className="readout-label">MODEL STATUS</span>
+              <strong>{visionStatus === "ready" ? "READY" : visionStatus === "loading" ? "LOADING" : visionStatus === "error" ? "ERROR" : "NOT STARTED"}</strong>
+              <span className="dashboard-detail-note">MediaPipe Hand Landmarker</span>
+            </div>
+          </div>
+          <p className="dashboard-footnote">Inference FPS is measured from completed detections. Camera FPS is the frame-rate value reported by the browser's video track. Palm speed is estimated from 2D landmark movement.</p>
+        </section>
+      )}
+
       <div className="camera-actions">
         <div className="camera-description">
           <strong>Hand tracking</strong>
@@ -235,15 +356,23 @@ export default function Camera() {
   );
 }
 
+function MetricCard({ label, value, unit, accent = false }) {
+  return (
+    <div className={accent ? "metric-card metric-card-accent" : "metric-card"}>
+      <span className="readout-label">{label}</span>
+      <strong>{value}</strong>
+      <span>{unit}</span>
+    </div>
+  );
+}
+
 function getPalmCenter(landmarks) {
-  // Average the wrist and four finger-base landmarks for a stable palm reference.
   const palmPoints = [0, 5, 9, 13, 17].map((index) => landmarks[index]);
   return {
     x: palmPoints.reduce((sum, point) => sum + point.x, 0) / palmPoints.length,
     y: palmPoints.reduce((sum, point) => sum + point.y, 0) / palmPoints.length,
   };
 }
-
 
 function drawHands(canvas, hands) {
   const context = canvas.getContext("2d");
