@@ -73,6 +73,19 @@ export function createOrbInteraction() {
 
       if (palm && now >= contactLockUntil) {
         collideWithMovingPalm(palm, palmWidth, palmVelocity, priorPalm, now);
+        // Bottom-of-frame scoop assist: an upward palm motion can lift a ball
+        // resting on the floor even when the wrist/fingers are partly cropped
+        // and the gesture classifier cannot confidently see a complete fist.
+        const bottomScoop = orb.y > 0.84 &&
+          palm.y > 0.68 &&
+          Math.abs(orb.x - palm.x) < 0.25 &&
+          palmVelocity.y < -0.12;
+        if (bottomScoop && now - lastImpactTime > 180) {
+          orb.vy = Math.min(orb.vy, -Math.max(0.9, Math.abs(palmVelocity.y) * 0.85));
+          orb.vx += clamp(palmVelocity.x * 0.35, -0.45, 0.45);
+          lastImpactTime = now;
+          contactLockUntil = now + 110;
+        }
         if (gesture === "CLOSED" && canCatchWithFist(palm, palmWidth)) {
           orb.mode = "grabbed";
           orb.x = palm.x;
