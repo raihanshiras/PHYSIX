@@ -47,3 +47,10 @@ Camera frames are processed locally in the browser. The model file is downloaded
 - Keep device integration separate from the UI.
 - Keep computer vision and physics logic out of React components.
 - Prefer understandable, testable steps over premature abstraction.
+
+
+## Camera preview: low-light view
+
+The camera toolbar includes a LOW-LIGHT toggle. It applies a subtle CSS display filter (slight brightness lift, restrained contrast/saturation adjustment, and a very small blur) to make the preview look a little cleaner in dim rooms.
+
+This is not true sensor-level denoising. It cannot remove chroma noise or recover detail lost by a noisy low-light sensor. The filter affects only the displayed video; MediaPipe still processes the original video frames so gesture detection is not softened by the preview effect. Better room lighting remains the most effective way to reduce webcam grain.
