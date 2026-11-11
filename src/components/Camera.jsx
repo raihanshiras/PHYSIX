@@ -3,6 +3,7 @@ import { startCamera, stopCamera } from "../engines/camera";
 import { createHandLandmarker } from "../engines/handTracking";
 import { createGestureTracker } from "../engines/gestureTracking";
 import { createPerformanceMonitor } from "../engines/performanceMonitor";
+import { createPalmTracker } from "../engines/palmTracking";
 import "./Camera.css";
 
 const HAND_CONNECTIONS = [
@@ -36,6 +37,7 @@ export default function Camera() {
   const lastVideoTimeRef = useRef(-1);
   const gestureTrackerRef = useRef(createGestureTracker());
   const performanceMonitorRef = useRef(createPerformanceMonitor());
+  const palmTrackerRef = useRef(createPalmTracker());
   const metricsRef = useRef({ ...EMPTY_METRICS });
   const lastPublishRef = useRef(0);
   const previousPalmRef = useRef(null);
@@ -84,6 +86,7 @@ export default function Camera() {
     setHandInfo(null);
     performanceMonitorRef.current.reset();
     previousPalmRef.current = null;
+    palmTrackerRef.current.reset();
     metricsRef.current = { ...EMPTY_METRICS };
     setMetrics({ ...EMPTY_METRICS });
     clearOverlay();
@@ -157,14 +160,16 @@ export default function Camera() {
         performanceMonitorRef.current.recordInference(inferenceEnd - inferenceStart, inferenceEnd);
 
         const hands = result.landmarks ?? [];
-        drawHands(canvas, hands);
-
         const firstHand = hands[0];
+        const rawPalm = firstHand ? getPalmCenter(firstHand) : null;
+        const smoothedPalm = palmTrackerRef.current.update(rawPalm, inferenceEnd);
+        drawHands(canvas, hands, smoothedPalm);
+
         metricsRef.current.handCount = hands.length;
         metricsRef.current.landmarkCount = hands.reduce((total, hand) => total + hand.length, 0);
 
         if (firstHand) {
-          const palm = getPalmCenter(firstHand);
+          const palm = smoothedPalm ?? getPalmCenter(firstHand);
           const now = performance.now();
           const previousPalm = previousPalmRef.current;
           let velocity = null;
@@ -199,6 +204,7 @@ export default function Camera() {
           ));
         } else {
           previousPalmRef.current = null;
+          palmTrackerRef.current.reset();
           metricsRef.current.palmX = null;
           metricsRef.current.palmY = null;
           metricsRef.current.palmVelocity = null;
@@ -223,6 +229,7 @@ export default function Camera() {
       lastVideoTimeRef.current = -1;
       gestureTrackerRef.current.reset();
       previousPalmRef.current = null;
+      palmTrackerRef.current.reset();
       clearOverlay();
     };
   }, [isActive]);
@@ -338,11 +345,11 @@ function getPalmCenter(landmarks) {
   };
 }
 
-function drawHands(canvas, hands) {
+function drawHands(canvas, hands, trackedPalm) {
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
 
-  for (const landmarks of hands) {
+  for (const [handIndex, landmarks] of hands.entries()) {
     context.lineWidth = Math.max(2, canvas.width / 400);
     context.strokeStyle = "#8be0bd";
     context.fillStyle = "#ffffff";
@@ -360,13 +367,48 @@ function drawHands(canvas, hands) {
       context.fill();
     }
 
-    const palm = getPalmCenter(landmarks);
+    const palm = handIndex === 0 && trackedPalm ? trackedPalm : getPalmCenter(landmarks);
     context.beginPath();
     context.arc(palm.x * canvas.width, palm.y * canvas.height, Math.max(6, canvas.width / 100), 0, Math.PI * 2);
     context.strokeStyle = "#f4c96b";
     context.lineWidth = Math.max(2, canvas.width / 300);
     context.stroke();
+
+    if (handIndex === 0) drawAnchoredOrb(context, canvas, palm, landmarks);
   }
+}
+
+function drawAnchoredOrb(context, canvas, palm, landmarks) {
+  const palmWidth = Math.hypot(
+    landmarks[5].x - landmarks[17].x,
+    landmarks[5].y - landmarks[17].y,
+  );
+  const radius = Math.max(13, Math.min(34, palmWidth * canvas.width * 0.24));
+  const x = palm.x * canvas.width;
+  const y = (palm.y - palmWidth * 0.9) * canvas.height;
+
+  context.save();
+  context.shadowColor = "#55e6ff";
+  context.shadowBlur = radius * 1.2;
+  const glow = context.createRadialGradient(x - radius * 0.3, y - radius * 0.35, radius * 0.08, x, y, radius);
+  glow.addColorStop(0, "#f2ffff");
+  glow.addColorStop(0.28, "#8df4ff");
+  glow.addColorStop(0.72, "#22b8df");
+  glow.addColorStop(1, "#12618f");
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fillStyle = glow;
+  context.fill();
+  context.shadowBlur = 0;
+  context.lineWidth = Math.max(1.5, radius * 0.07);
+  context.strokeStyle = "#c9fbff";
+  context.stroke();
+  context.beginPath();
+  context.ellipse(x, y + radius * 1.35, radius * 1.35, radius * 0.28, 0, 0, Math.PI * 2);
+  context.strokeStyle = "#72eaffbb";
+  context.lineWidth = Math.max(1, radius * 0.045);
+  context.stroke();
+  context.restore();
 }
 
 function getCameraErrorMessage(error) {
