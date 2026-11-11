@@ -2,14 +2,13 @@
 
 An interactive reality and physics learning laboratory, built step by step to study browser APIs, computer vision, simulation, and augmented reality.
 
-## Current milestone: 1A — Webcam foundation
+## Current milestone: 1B — Hand landmark tracking
 
-- Request webcam permission.
-- Display the live camera stream.
-- Show permission and camera errors.
-- Stop camera tracks when the camera is disabled or the component unmounts.
-
-Hand detection and MediaPipe are deliberately not included yet. They will be introduced in the next experiment.
+- Request webcam permission and display the live camera stream.
+- Load MediaPipe Hand Landmarker.
+- Detect up to two hands and draw their 21 landmarks.
+- Estimate palm position.
+- Classify the first hand as OPEN, CLOSED, or PARTIAL using a first-pass geometric heuristic.
 
 ## Run locally
 
@@ -22,11 +21,25 @@ npm run dev
 
 Open the local URL printed by Vite. Camera access works on secure contexts, including localhost.
 
-## What this experiment teaches
+## MediaPipe asset loading
 
-The browser's `navigator.mediaDevices.getUserMedia()` API requests permission and returns a `MediaStream`. Assigning the stream to a video's `srcObject` displays the camera. Calling `stop()` on each track releases the camera.
+The JavaScript API is installed from npm. Its matching WebAssembly runtime files are copied from `node_modules/@mediapipe/tasks-vision/wasm` into `public/mediapipe/wasm` by `scripts/prepare-mediapipe.js`.
 
-React's `useRef` stores the video element and stream without triggering renders; `useState` stores UI status; effect cleanup releases the stream when the component unmounts.
+This is run automatically after `npm install`, before `npm run dev`, and before `npm run build`. Keeping the WASM files local avoids a CDN path/version mismatch and removes the CDN request that previously returned 404.
+
+The hand-landmark model is still fetched from Google's model hosting on first initialization. If model loading fails, inspect the browser Network tab for the `hand_landmarker.task` request.
+
+## How hand tracking works
+
+1. `createHandLandmarker()` loads the local MediaPipe WASM runtime and the hand model.
+2. The camera component sends each new video frame to `detectForVideo()`.
+3. MediaPipe returns 21 normalized landmark coordinates per detected hand.
+4. Canvas draws the landmarks and their connections over the mirrored video.
+5. A geometric heuristic estimates palm position and hand openness.
+
+The open/closed classifier is an educational first approximation. It works best when the palm faces the camera; orientation-aware logic and temporal smoothing are future improvements.
+
+Camera frames are processed locally in the browser. The model file is downloaded from Google's hosting service; the webcam stream is not uploaded by this application.
 
 ## Project principles
 
@@ -34,25 +47,3 @@ React's `useRef` stores the video element and stream without triggering renders;
 - Keep device integration separate from the UI.
 - Keep computer vision and physics logic out of React components.
 - Prefer understandable, testable steps over premature abstraction.
-
-
-## Experiment 1B — Hand landmarks
-
-The browser now loads MediaPipe Tasks Vision's Hand Landmarker model and runs it on new webcam frames.
-
-- 21 landmarks are drawn over each detected hand.
-- A palm reference point is calculated by averaging landmarks 0, 5, 9, 13, and 17.
-- The first-pass hand-state heuristic counts extended fingers using fingertip/PIP distances from the wrist.
-- The hand-state classifier reports OPEN, CLOSED, or PARTIAL.
-
-### How it works
-
-1. `createHandLandmarker()` loads the MediaPipe WASM runtime and hand-landmark model.
-2. The camera component sends each new video frame to `detectForVideo()`.
-3. MediaPipe returns normalized landmark coordinates (0–1 relative to the input frame).
-4. Canvas draws the 21 points and their connections over the mirrored video.
-5. A simple geometry heuristic estimates palm position and hand openness.
-
-The open/closed classifier is an educational first approximation, not a robust gesture-recognition model. It works best with the palm facing the camera; orientation-aware logic and temporal smoothing are future improvements.
-
-The model and WASM runtime are downloaded from Google's MediaPipe model hosting and jsDelivr on first use. Camera frames are processed locally in the browser.
