@@ -88,7 +88,7 @@ export default function Camera() {
         console.error("Hand Landmarker initialization failed:", error);
         if (!cancelled) {
           setVisionStatus("error");
-          setErrorMessage("Hand tracking could not load. Check your internet connection and refresh.");
+          setErrorMessage(error?.message || "Hand tracking initialization failed. Check the browser console for details.");
         }
       }
     }
