@@ -307,3 +307,31 @@
 
 /* Palm-anchored virtual object overlay. */
 .hand-overlay { image-rendering: auto; }
+
+
+.orb-interaction-hint {
+  position: absolute;
+  z-index: 4;
+  left: 14px;
+  bottom: 14px;
+  max-width: calc(100% - 160px);
+  padding: 8px 10px;
+  border: 1px solid #72eaff55;
+  border-radius: 6px;
+  background: rgba(10, 18, 24, 0.78);
+  color: #b9f5ff;
+  font-size: 0.58rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 600px) {
+  .orb-interaction-hint {
+    left: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 110px);
+    padding: 6px 8px;
+    font-size: 0.52rem;
+  }
+}
