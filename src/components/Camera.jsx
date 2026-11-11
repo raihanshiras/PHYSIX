@@ -280,68 +280,28 @@ export default function Camera() {
         {dashboardOpen && (
           <section className="vision-dashboard" id="vision-dashboard" aria-label="Vision performance dashboard">
             <div className="dashboard-heading">
-              <div>
-                <p className="dashboard-eyebrow">LIVE TELEMETRY</p>
-                <h2>Vision dashboard</h2>
+              <div className="dashboard-title">
+                <span className={isActive && visionStatus === "ready" ? "dashboard-live-dot" : "dashboard-idle-dot"} />
+                <strong>VISION TELEMETRY</strong>
               </div>
-              <div className="dashboard-header-actions">
-                <span className={isActive && visionStatus === "ready" ? "dashboard-live" : "dashboard-idle"}>
-                  <span /> {isActive && visionStatus === "ready" ? "LIVE" : "STANDBY"}
-                </span>
-                <button type="button" className="dashboard-close" onClick={() => setDashboardOpen(false)} aria-label="Close vision dashboard" title="Close dashboard">×</button>
-              </div>
+              <button type="button" className="dashboard-close" aria-label="Close vision dashboard" onClick={() => setDashboardOpen(false)}>×</button>
             </div>
-  
             <div className="dashboard-metrics-grid">
-              <MetricCard label="INFERENCE FPS" value={isActive ? metrics.inferenceFps.toFixed(1) : "—"} unit="frames / sec" accent />
-              <MetricCard label="LATEST LATENCY" value={isActive && metrics.sampleCount ? metrics.latestLatency.toFixed(1) : "—"} unit="milliseconds" />
-              <MetricCard label="AVG. LATENCY" value={isActive && metrics.sampleCount ? metrics.averageLatency.toFixed(1) : "—"} unit={`last ${metrics.sampleCount} samples`} />
-              <MetricCard label="CAMERA FPS" value={isActive && metrics.cameraFps ? metrics.cameraFps.toFixed(0) : "—"} unit="reported by camera" />
-              <MetricCard label="HANDS DETECTED" value={isActive ? String(metrics.handCount) : "—"} unit="visible hands" />
-              <MetricCard label="LANDMARKS" value={isActive ? String(metrics.landmarkCount) : "—"} unit="21 per detected hand" />
+              <MetricCard label="INFERENCE FPS" value={isActive ? metrics.inferenceFps.toFixed(1) : "—"} />
+              <MetricCard label="LATENCY" value={isActive && metrics.sampleCount ? `${metrics.latestLatency.toFixed(1)} ms` : "—"} />
+              <MetricCard label="AVG LATENCY" value={isActive && metrics.sampleCount ? `${metrics.averageLatency.toFixed(1)} ms` : "—"} />
+              <MetricCard label="CAMERA FPS" value={isActive && metrics.cameraFps ? metrics.cameraFps.toFixed(0) : "—"} />
+              <MetricCard label="HANDS" value={isActive ? String(metrics.handCount) : "—"} />
+              <MetricCard label="LANDMARKS" value={isActive ? String(metrics.landmarkCount) : "—"} />
             </div>
-  
-            <div className="dashboard-detail-grid">
-              <div className="dashboard-detail">
-                <span className="readout-label">PALM COORDINATES</span>
-                <strong>{isActive && metrics.palmX !== null ? `X ${metrics.palmX}%  /  Y ${metrics.palmY}%` : "—"}</strong>
-                <span className="dashboard-detail-note">Normalized position in camera frame</span>
-              </div>
-              <div className="dashboard-detail">
-                <span className="readout-label">PALM SPEED</span>
-                <strong>{isActive && metrics.palmVelocity !== null ? `${metrics.palmVelocity} %/s` : "—"}</strong>
-                <span className="dashboard-detail-note">2D image-plane speed, not real-world speed</span>
-              </div>
-              <div className="dashboard-detail">
-                <span className="readout-label">MODEL STATUS</span>
-                <strong>{visionStatus === "ready" ? "READY" : visionStatus === "loading" ? "LOADING" : visionStatus === "error" ? "ERROR" : "NOT STARTED"}</strong>
-                <span className="dashboard-detail-note">MediaPipe Hand Landmarker</span>
-              </div>
+            <div className="dashboard-compact-details">
+              <span>PALM <strong>{isActive && metrics.palmX !== null ? `${metrics.palmX}%, ${metrics.palmY}%` : "—"}</strong></span>
+              <span>SPEED <strong>{isActive && metrics.palmVelocity !== null ? `${metrics.palmVelocity} %/s` : "—"}</strong></span>
+              <span>MODEL <strong>{visionStatus === "ready" ? "READY" : visionStatus === "loading" ? "LOADING" : visionStatus === "error" ? "ERROR" : "OFF"}</strong></span>
             </div>
-            <p className="dashboard-footnote">Inference FPS is measured from completed detections. Camera FPS is the frame-rate value reported by the browser's video track. Palm speed is estimated from 2D landmark movement.</p>
           </section>
         )}
   
-      </div>
-
-      {isActive && (
-        <div className="tracking-readout">
-          <div>
-            <span className="readout-label">VISION MODEL</span>
-            <strong>{visionStatus === "loading" ? "LOADING MODEL…" : visionStatus === "ready" ? "HAND LANDMARKER READY" : visionStatus === "error" ? "MODEL ERROR" : "INITIALIZING"}</strong>
-          </div>
-          <div>
-            <span className="readout-label">HAND STATE</span>
-            <strong className={handInfo?.state === "OPEN" ? "state-open" : handInfo?.state === "CLOSED" ? "state-closed" : ""}>{handStateLabel}</strong>
-          </div>
-          <div>
-            <span className="readout-label">PALM POSITION</span>
-            <strong>{handInfo ? `X ${handInfo.x}% · Y ${handInfo.y}%` : "—"}</strong>
-          </div>
-        </div>
-      )}
-
-
       <div className="camera-actions">
         <div className="camera-description">
           <strong>Hand tracking</strong>
@@ -360,12 +320,11 @@ export default function Camera() {
   );
 }
 
-function MetricCard({ label, value, unit, accent = false }) {
+function MetricCard({ label, value }) {
   return (
-    <div className={accent ? "metric-card metric-card-accent" : "metric-card"}>
-      <span className="readout-label">{label}</span>
+    <div className="metric-card">
+      <span>{label}</span>
       <strong>{value}</strong>
-      <span>{unit}</span>
     </div>
   );
 }
