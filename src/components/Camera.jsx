@@ -43,6 +43,8 @@ export default function Camera() {
   const metricsRef = useRef({ ...EMPTY_METRICS });
   const lastPublishRef = useRef(0);
   const previousPalmRef = useRef(null);
+  const latestVisionRef = useRef({ hands: [], palm: null, palmWidth: 0.12, gesture: "PARTIAL", palmTime: 0 });
+  const physicsAnimationRef = useRef(null);
 
   const [status, setStatus] = useState("inactive");
   const [errorMessage, setErrorMessage] = useState("");
@@ -91,6 +93,7 @@ export default function Camera() {
     previousPalmRef.current = null;
     palmTrackerRef.current.reset();
     orbInteractionRef.current.reset();
+    latestVisionRef.current = { hands: [], palm: null, palmWidth: 0.12, gesture: "PARTIAL", palmTime: 0 };
     setOrbStatus("WAITING FOR HAND");
     metricsRef.current = { ...EMPTY_METRICS };
     setMetrics({ ...EMPTY_METRICS });
@@ -132,6 +135,7 @@ export default function Camera() {
         landmarkerRef.current = landmarker;
         setVisionStatus("ready");
         detectFrame();
+        renderPhysicsFrame();
       } catch (error) {
         console.error("Hand Landmarker initialization failed:", error);
         if (!cancelled) {
@@ -139,6 +143,23 @@ export default function Camera() {
           setErrorMessage(error?.message || "Hand tracking initialization failed. Check the browser console for details.");
         }
       }
+    }
+
+    function renderPhysicsFrame() {
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      if (canvas && video && video.videoWidth && video.videoHeight) {
+        const width = Math.max(1, Math.round(canvas.clientWidth));
+        const height = Math.max(1, Math.round(canvas.clientHeight));
+        if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+        const vision = latestVisionRef.current;
+        const orb = orbInteractionRef.current.update({ palm: vision.palm, palmWidth: vision.palmWidth, gesture: vision.gesture, palmTime: vision.palmTime, now: performance.now() });
+        drawHands(canvas, vision.hands, video.videoWidth, video.videoHeight);
+        drawOrb(canvas, orb, video.videoWidth, video.videoHeight);
+        const nextOrbStatus = orb.mode === "grabbed" ? "GRABBED · MOVE YOUR HAND" : orb.mode === "falling" ? "IN PLAY · HIT WITH YOUR PALM" : vision.palm ? "CLOSE FIST TO GRAB" : "WAITING FOR HAND";
+        setOrbStatus((previous) => previous === nextOrbStatus ? previous : nextOrbStatus);
+      }
+      physicsAnimationRef.current = requestAnimationFrame(renderPhysicsFrame);
     }
 
     function detectFrame() {
@@ -219,18 +240,7 @@ export default function Camera() {
         const palmWidth = firstHand
           ? Math.hypot(firstHand[5].x - firstHand[17].x, firstHand[5].y - firstHand[17].y)
           : 0.12;
-        const orb = orbInteractionRef.current.update({ palm, palmWidth, gesture, now });
-        drawHands(canvas, hands);
-        drawOrb(canvas, orb);
-        const nextOrbStatus = orb.mode === "grabbed"
-          ? "GRABBED · MOVE YOUR HAND"
-          : orb.mode === "falling"
-            ? "IN PLAY · HIT WITH YOUR PALM"
-            : firstHand
-              ? "CLOSE FIST TO GRAB"
-              : "WAITING FOR HAND";
-        setOrbStatus((previous) => previous === nextOrbStatus ? previous : nextOrbStatus);
-
+        latestVisionRef.current = { hands, palm, palmWidth, gesture, palmTime: inferenceEnd };
         publishMetrics(inferenceEnd);
       }
 
@@ -242,7 +252,9 @@ export default function Camera() {
     return () => {
       cancelled = true;
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (physicsAnimationRef.current) cancelAnimationFrame(physicsAnimationRef.current);
       animationRef.current = null;
+      physicsAnimationRef.current = null;
       landmarkerRef.current?.close();
       landmarkerRef.current = null;
       lastVideoTimeRef.current = -1;
@@ -250,6 +262,7 @@ export default function Camera() {
       previousPalmRef.current = null;
       palmTrackerRef.current.reset();
       orbInteractionRef.current.reset();
+      latestVisionRef.current = { hands: [], palm: null, palmWidth: 0.12, gesture: "PARTIAL", palmTime: 0 };
       clearOverlay();
     };
   }, [isActive]);
@@ -258,6 +271,7 @@ export default function Camera() {
     stopCamera(streamRef.current);
     landmarkerRef.current?.close();
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (physicsAnimationRef.current) cancelAnimationFrame(physicsAnimationRef.current);
   }, []);
 
   const handStateLabel = handInfo?.state ?? "NO HAND";
@@ -366,68 +380,49 @@ function getPalmCenter(landmarks) {
   };
 }
 
-function drawHands(canvas, hands) {
+function mapVideoPoint(x, y, canvas, videoWidth, videoHeight) {
+  const scale = Math.max(canvas.width / videoWidth, canvas.height / videoHeight);
+  const renderedWidth = videoWidth * scale;
+  const renderedHeight = videoHeight * scale;
+  return { x: x * renderedWidth + (canvas.width - renderedWidth) / 2, y: y * renderedHeight + (canvas.height - renderedHeight) / 2, scale };
+}
+
+function drawHands(canvas, hands, videoWidth, videoHeight) {
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (const [handIndex, landmarks] of hands.entries()) {
+  const point = (landmark) => mapVideoPoint(landmark.x, landmark.y, canvas, videoWidth, videoHeight);
+  for (const landmarks of hands) {
     context.lineWidth = Math.max(2, canvas.width / 400);
     context.strokeStyle = "#8be0bd";
     context.fillStyle = "#ffffff";
-
     for (const [start, end] of HAND_CONNECTIONS) {
-      context.beginPath();
-      context.moveTo(landmarks[start].x * canvas.width, landmarks[start].y * canvas.height);
-      context.lineTo(landmarks[end].x * canvas.width, landmarks[end].y * canvas.height);
-      context.stroke();
+      const p1 = point(landmarks[start]), p2 = point(landmarks[end]);
+      context.beginPath(); context.moveTo(p1.x, p1.y); context.lineTo(p2.x, p2.y); context.stroke();
     }
-
-    for (const point of landmarks) {
-      context.beginPath();
-      context.arc(point.x * canvas.width, point.y * canvas.height, Math.max(3, canvas.width / 220), 0, Math.PI * 2);
-      context.fill();
+    for (const landmark of landmarks) {
+      const p = point(landmark);
+      context.beginPath(); context.arc(p.x, p.y, Math.max(3, canvas.width / 220), 0, Math.PI * 2); context.fill();
     }
-
-    const palm = getPalmCenter(landmarks);
-    context.beginPath();
-    context.arc(palm.x * canvas.width, palm.y * canvas.height, Math.max(6, canvas.width / 100), 0, Math.PI * 2);
-    context.strokeStyle = "#f4c96b";
-    context.lineWidth = Math.max(2, canvas.width / 300);
-    context.stroke();
-
+    const p = point(getPalmCenter(landmarks));
+    context.beginPath(); context.arc(p.x, p.y, Math.max(6, canvas.width / 100), 0, Math.PI * 2);
+    context.strokeStyle = "#f4c96b"; context.lineWidth = Math.max(2, canvas.width / 300); context.stroke();
   }
 }
 
-function drawOrb(canvas, orb) {
+function drawOrb(canvas, orb, videoWidth, videoHeight) {
+  const mapped = mapVideoPoint(orb.x, orb.y, canvas, videoWidth, videoHeight);
   const context = canvas.getContext("2d");
-  const x = orb.x * canvas.width;
-  const y = orb.y * canvas.height;
-  const radius = orb.radius * canvas.width;
+  const radius = orb.radius * videoWidth * mapped.scale;
   const grabbed = orb.mode === "grabbed";
-
-  context.save();
-  context.translate(x, y);
-  context.rotate(orb.spin || 0);
-  context.shadowColor = grabbed ? "#a4ffca" : "#55e6ff";
-  context.shadowBlur = radius * 1.5;
+  context.save(); context.translate(mapped.x, mapped.y); context.rotate(orb.spin || 0);
+  context.shadowColor = grabbed ? "#a4ffca" : "#55e6ff"; context.shadowBlur = radius * 1.5;
   const glow = context.createRadialGradient(-radius * 0.3, -radius * 0.35, radius * 0.08, 0, 0, radius);
-  glow.addColorStop(0, "#f2ffff");
-  glow.addColorStop(0.28, grabbed ? "#baffd5" : "#8df4ff");
-  glow.addColorStop(0.72, grabbed ? "#43d991" : "#22b8df");
-  glow.addColorStop(1, grabbed ? "#176b50" : "#12618f");
-  context.beginPath();
-  context.arc(0, 0, radius, 0, Math.PI * 2);
-  context.fillStyle = glow;
-  context.fill();
-  context.shadowBlur = 0;
-  context.lineWidth = Math.max(1.5, radius * 0.07);
-  context.strokeStyle = "#d7ffff";
-  context.stroke();
-  context.beginPath();
-  context.ellipse(0, radius * 1.35, radius * 1.35, radius * 0.28, 0, 0, Math.PI * 2);
-  context.strokeStyle = "#72eaffbb";
-  context.lineWidth = Math.max(1, radius * 0.045);
-  context.stroke();
+  glow.addColorStop(0, "#f2ffff"); glow.addColorStop(0.28, grabbed ? "#baffd5" : "#8df4ff");
+  glow.addColorStop(0.72, grabbed ? "#43d991" : "#22b8df"); glow.addColorStop(1, grabbed ? "#176b50" : "#12618f");
+  context.beginPath(); context.arc(0, 0, radius, 0, Math.PI * 2); context.fillStyle = glow; context.fill();
+  context.shadowBlur = 0; context.lineWidth = Math.max(1.5, radius * 0.07); context.strokeStyle = "#d7ffff"; context.stroke();
+  context.beginPath(); context.ellipse(0, radius * 1.35, radius * 1.35, radius * 0.28, 0, 0, Math.PI * 2);
+  context.strokeStyle = "#72eaffbb"; context.lineWidth = Math.max(1, radius * 0.045); context.stroke();
   context.restore();
 }
 
