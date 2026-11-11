@@ -2,7 +2,7 @@
  * Time-based palm smoothing for stable screen-space object anchoring.
  * Coordinates are normalized MediaPipe image coordinates (0..1).
  */
-export function createPalmTracker({ smoothingMs = 75 } = {}) {
+export function createPalmTracker({ smoothingMs = 58 } = {}) {
   let position = null;
   let lastTime = 0;
 
