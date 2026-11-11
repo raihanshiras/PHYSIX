@@ -26,6 +26,7 @@ export default function Camera() {
   const [errorMessage, setErrorMessage] = useState("");
   const [visionStatus, setVisionStatus] = useState("not-started");
   const [handInfo, setHandInfo] = useState(null);
+  const [lowLightView, setLowLightView] = useState(true);
 
   async function enableCamera() {
     if (streamRef.current) return;
@@ -172,11 +173,23 @@ export default function Camera() {
           <span className={`status-indicator status-${status}`} />
           <span>{isActive ? "CAMERA CONNECTED" : status === "requesting" ? "WAITING FOR PERMISSION" : status === "error" ? "CAMERA UNAVAILABLE" : "CAMERA OFFLINE"}</span>
         </div>
-        <span className="camera-resolution">LIVE INPUT / VIDEO</span>
+        <div className="camera-toolbar-tools">
+          <button
+            className={lowLightView ? "image-filter-toggle is-on" : "image-filter-toggle"}
+            type="button"
+            onClick={() => setLowLightView((enabled) => !enabled)}
+            aria-pressed={lowLightView}
+            title="Applies a subtle display-only filter. Hand detection uses the original camera frames."
+          >
+            <span className="filter-toggle-dot" />
+            LOW-LIGHT {lowLightView ? "ON" : "OFF"}
+          </button>
+          <span className="camera-resolution">LIVE INPUT / VIDEO</span>
+        </div>
       </div>
 
       <div className="camera-viewport">
-        <video ref={videoRef} className={isActive ? "camera-video is-visible" : "camera-video"} autoPlay playsInline muted aria-label="Live webcam preview" />
+        <video ref={videoRef} className={isActive ? (lowLightView ? "camera-video is-visible low-light-view" : "camera-video is-visible") : "camera-video"} autoPlay playsInline muted aria-label="Live webcam preview" />
         <canvas ref={canvasRef} className={isActive ? "hand-overlay is-visible" : "hand-overlay"} />
         {!isActive && (
           <div className="camera-placeholder">
