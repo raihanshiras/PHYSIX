@@ -65,6 +65,8 @@ export default function Camera() {
     if (context) context.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  const isActive = status === "active";
+
   useEffect(() => {
     if (!isActive) return undefined;
 
@@ -157,7 +159,6 @@ export default function Camera() {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
   }, []);
 
-  const isActive = status === "active";
   const handStateLabel = handInfo?.state ?? "NO HAND";
 
   return (
