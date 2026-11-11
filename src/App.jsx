@@ -14,8 +14,7 @@ export default function App() {
         <p className="eyebrow">EXPERIMENT 01 / CAMERA FOUNDATION</p>
         <h1>Start with <span>reality.</span></h1>
         <p className="intro-copy">
-          First, establish a reliable connection between the browser and the
-          physical world. Hand tracking comes next.
+          Track your hand in real time and inspect the vision pipeline with live performance telemetry.
         </p>
       </section>
       <Camera />
