@@ -303,3 +303,7 @@
   }
   .metric-card { padding: 6px; }
 }
+
+
+/* Palm-anchored virtual object overlay. */
+.hand-overlay { image-rendering: auto; }
