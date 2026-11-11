@@ -37,7 +37,7 @@ The hand-landmark model is still fetched from Google's model hosting on first in
 4. Canvas draws the landmarks and their connections over the mirrored video.
 5. A geometric heuristic estimates palm position and hand openness.
 
-The open/closed classifier is an educational first approximation. It works best when the palm faces the camera; orientation-aware logic and temporal smoothing are future improvements.
+Gesture classification uses the four non-thumb fingers. Each finger contributes a continuous extension score based on its PIP joint angle and normalized fingertip reach. The scores are filtered with an exponential moving average, then OPEN/CLOSED transitions use separate enter/exit thresholds (hysteresis) and a 130 ms confirmation window. This reduces flicker when landmarks jitter near a boundary. PARTIAL is the middle range. This is still a practical 2D approximation: hand rotation, occlusion, and unusual camera angles can affect it.
 
 Camera frames are processed locally in the browser. The model file is downloaded from Google's hosting service; the webcam stream is not uploaded by this application.
 
