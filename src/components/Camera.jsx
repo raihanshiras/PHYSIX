@@ -301,7 +301,8 @@ export default function Camera() {
             </div>
           </section>
         )}
-  
+      </div>
+
       <div className="camera-actions">
         <div className="camera-description">
           <strong>Hand tracking</strong>
