@@ -5,3 +5,6 @@ dist
 !.env.example
 .DS_Store
 *.log
+
+# MediaPipe WASM files are copied from node_modules during install
+public/mediapipe/wasm/
