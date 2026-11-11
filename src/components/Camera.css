@@ -125,3 +125,48 @@
 @media (max-width: 600px) {
   .tracking-readout { grid-template-columns: 1fr; padding: 14px; }
 }
+
+.camera-toolbar-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.image-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.image-filter-toggle:hover { color: var(--text); }
+.image-filter-toggle.is-on { color: var(--accent); }
+.filter-toggle-dot {
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+.image-filter-toggle.is-on .filter-toggle-dot {
+  background: currentColor;
+  box-shadow: 0 0 8px #8be0bd80;
+}
+/*
+ * Display-only cleanup: a tiny blur suppresses some high-frequency sensor
+ * grain; brightness lifts shadows without amplifying contrast too much.
+ * MediaPipe still receives the unfiltered video element's source pixels.
+ */
+.camera-video.low-light-view {
+  filter: brightness(1.1) contrast(1.035) saturate(0.96) blur(0.35px);
+}
+@media (max-width: 600px) {
+  .camera-toolbar-tools { gap: 10px; }
+  .camera-resolution { display: none; }
+}
