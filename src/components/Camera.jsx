@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { startCamera, stopCamera } from "../engines/camera";
 import { createHandLandmarker } from "../engines/handTracking";
+import { createGestureTracker } from "../engines/gestureTracking";
 import "./Camera.css";
 
 const HAND_CONNECTIONS = [
@@ -19,6 +20,7 @@ export default function Camera() {
   const landmarkerRef = useRef(null);
   const animationRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
+  const gestureTrackerRef = useRef(createGestureTracker());
 
   const [status, setStatus] = useState("inactive");
   const [errorMessage, setErrorMessage] = useState("");
@@ -119,7 +121,7 @@ export default function Camera() {
           const palm = getPalmCenter(firstHand);
           setHandInfo((previous) => {
             const next = {
-              state: classifyHand(firstHand),
+              state: gestureTrackerRef.current.update(firstHand),
               x: Math.round(palm.x * 100),
               y: Math.round(palm.y * 100),
               count: result.landmarks.length,
@@ -133,6 +135,7 @@ export default function Camera() {
             return next;
           });
         } else {
+          gestureTrackerRef.current.reset();
           setHandInfo(null);
         }
       }
@@ -149,6 +152,7 @@ export default function Camera() {
       landmarkerRef.current?.close();
       landmarkerRef.current = null;
       lastVideoTimeRef.current = -1;
+      gestureTrackerRef.current.reset();
       clearOverlay();
     };
   }, [isActive]);
@@ -227,31 +231,6 @@ function getPalmCenter(landmarks) {
   };
 }
 
-function distance2D(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function classifyHand(landmarks) {
-  // Compare each fingertip's distance from the wrist with its PIP joint.
-  // This first-pass heuristic works best when the palm faces the camera.
-  const wrist = landmarks[0];
-  const fingerPairs = [
-    [8, 6],   // index tip / PIP
-    [12, 10], // middle
-    [16, 14], // ring
-    [20, 18], // pinky
-  ];
-
-  const extendedCount = fingerPairs.reduce((count, [tipIndex, pipIndex]) => {
-    const tipDistance = distance2D(landmarks[tipIndex], wrist);
-    const pipDistance = distance2D(landmarks[pipIndex], wrist);
-    return count + (tipDistance > pipDistance * 1.12 ? 1 : 0);
-  }, 0);
-
-  if (extendedCount >= 3) return "OPEN";
-  if (extendedCount <= 1) return "CLOSED";
-  return "PARTIAL";
-}
 
 function drawHands(canvas, hands) {
   const context = canvas.getContext("2d");
