@@ -44,7 +44,7 @@ export default function Camera() {
   const [errorMessage, setErrorMessage] = useState("");
   const [visionStatus, setVisionStatus] = useState("not-started");
   const [handInfo, setHandInfo] = useState(null);
-  const [lowLightView, setLowLightView] = useState(true);
+  const [lowLightView, setLowLightView] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [metrics, setMetrics] = useState({ ...EMPTY_METRICS });
 
@@ -277,6 +277,51 @@ export default function Camera() {
           </div>
         )}
         <div className="viewport-tag">PHYSIX / INPUT 01</div>
+        {dashboardOpen && (
+          <section className="vision-dashboard" id="vision-dashboard" aria-label="Vision performance dashboard">
+            <div className="dashboard-heading">
+              <div>
+                <p className="dashboard-eyebrow">LIVE TELEMETRY</p>
+                <h2>Vision dashboard</h2>
+              </div>
+              <div className="dashboard-header-actions">
+                <span className={isActive && visionStatus === "ready" ? "dashboard-live" : "dashboard-idle"}>
+                  <span /> {isActive && visionStatus === "ready" ? "LIVE" : "STANDBY"}
+                </span>
+                <button type="button" className="dashboard-close" onClick={() => setDashboardOpen(false)} aria-label="Close vision dashboard" title="Close dashboard">×</button>
+              </div>
+            </div>
+  
+            <div className="dashboard-metrics-grid">
+              <MetricCard label="INFERENCE FPS" value={isActive ? metrics.inferenceFps.toFixed(1) : "—"} unit="frames / sec" accent />
+              <MetricCard label="LATEST LATENCY" value={isActive && metrics.sampleCount ? metrics.latestLatency.toFixed(1) : "—"} unit="milliseconds" />
+              <MetricCard label="AVG. LATENCY" value={isActive && metrics.sampleCount ? metrics.averageLatency.toFixed(1) : "—"} unit={`last ${metrics.sampleCount} samples`} />
+              <MetricCard label="CAMERA FPS" value={isActive && metrics.cameraFps ? metrics.cameraFps.toFixed(0) : "—"} unit="reported by camera" />
+              <MetricCard label="HANDS DETECTED" value={isActive ? String(metrics.handCount) : "—"} unit="visible hands" />
+              <MetricCard label="LANDMARKS" value={isActive ? String(metrics.landmarkCount) : "—"} unit="21 per detected hand" />
+            </div>
+  
+            <div className="dashboard-detail-grid">
+              <div className="dashboard-detail">
+                <span className="readout-label">PALM COORDINATES</span>
+                <strong>{isActive && metrics.palmX !== null ? `X ${metrics.palmX}%  /  Y ${metrics.palmY}%` : "—"}</strong>
+                <span className="dashboard-detail-note">Normalized position in camera frame</span>
+              </div>
+              <div className="dashboard-detail">
+                <span className="readout-label">PALM SPEED</span>
+                <strong>{isActive && metrics.palmVelocity !== null ? `${metrics.palmVelocity} %/s` : "—"}</strong>
+                <span className="dashboard-detail-note">2D image-plane speed, not real-world speed</span>
+              </div>
+              <div className="dashboard-detail">
+                <span className="readout-label">MODEL STATUS</span>
+                <strong>{visionStatus === "ready" ? "READY" : visionStatus === "loading" ? "LOADING" : visionStatus === "error" ? "ERROR" : "NOT STARTED"}</strong>
+                <span className="dashboard-detail-note">MediaPipe Hand Landmarker</span>
+              </div>
+            </div>
+            <p className="dashboard-footnote">Inference FPS is measured from completed detections. Camera FPS is the frame-rate value reported by the browser's video track. Palm speed is estimated from 2D landmark movement.</p>
+          </section>
+        )}
+  
       </div>
 
       {isActive && (
@@ -296,47 +341,6 @@ export default function Camera() {
         </div>
       )}
 
-      {dashboardOpen && (
-        <section className="vision-dashboard" id="vision-dashboard" aria-label="Vision performance dashboard">
-          <div className="dashboard-heading">
-            <div>
-              <p className="dashboard-eyebrow">LIVE TELEMETRY</p>
-              <h2>Vision dashboard</h2>
-            </div>
-            <span className={isActive && visionStatus === "ready" ? "dashboard-live" : "dashboard-idle"}>
-              <span /> {isActive && visionStatus === "ready" ? "LIVE" : "STANDBY"}
-            </span>
-          </div>
-
-          <div className="dashboard-metrics-grid">
-            <MetricCard label="INFERENCE FPS" value={isActive ? metrics.inferenceFps.toFixed(1) : "—"} unit="frames / sec" accent />
-            <MetricCard label="LATEST LATENCY" value={isActive && metrics.sampleCount ? metrics.latestLatency.toFixed(1) : "—"} unit="milliseconds" />
-            <MetricCard label="AVG. LATENCY" value={isActive && metrics.sampleCount ? metrics.averageLatency.toFixed(1) : "—"} unit={`last ${metrics.sampleCount} samples`} />
-            <MetricCard label="CAMERA FPS" value={isActive && metrics.cameraFps ? metrics.cameraFps.toFixed(0) : "—"} unit="reported by camera" />
-            <MetricCard label="HANDS DETECTED" value={isActive ? String(metrics.handCount) : "—"} unit="visible hands" />
-            <MetricCard label="LANDMARKS" value={isActive ? String(metrics.landmarkCount) : "—"} unit="21 per detected hand" />
-          </div>
-
-          <div className="dashboard-detail-grid">
-            <div className="dashboard-detail">
-              <span className="readout-label">PALM COORDINATES</span>
-              <strong>{isActive && metrics.palmX !== null ? `X ${metrics.palmX}%  /  Y ${metrics.palmY}%` : "—"}</strong>
-              <span className="dashboard-detail-note">Normalized position in camera frame</span>
-            </div>
-            <div className="dashboard-detail">
-              <span className="readout-label">PALM SPEED</span>
-              <strong>{isActive && metrics.palmVelocity !== null ? `${metrics.palmVelocity} %/s` : "—"}</strong>
-              <span className="dashboard-detail-note">2D image-plane speed, not real-world speed</span>
-            </div>
-            <div className="dashboard-detail">
-              <span className="readout-label">MODEL STATUS</span>
-              <strong>{visionStatus === "ready" ? "READY" : visionStatus === "loading" ? "LOADING" : visionStatus === "error" ? "ERROR" : "NOT STARTED"}</strong>
-              <span className="dashboard-detail-note">MediaPipe Hand Landmarker</span>
-            </div>
-          </div>
-          <p className="dashboard-footnote">Inference FPS is measured from completed detections. Camera FPS is the frame-rate value reported by the browser's video track. Palm speed is estimated from 2D landmark movement.</p>
-        </section>
-      )}
 
       <div className="camera-actions">
         <div className="camera-description">
