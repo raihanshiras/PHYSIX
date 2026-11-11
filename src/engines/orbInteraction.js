@@ -22,6 +22,7 @@ export function createOrbInteraction() {
     const dt = lastFrameTime ? clamp((now - lastFrameTime) / 1000, 0, 1 / 30) : 0;
     lastFrameTime = now;
 
+    const priorPalm = previousPalm ? { ...previousPalm } : null;
     if (palm && palmTime !== previousPalmTime) {
       if (previousPalm && previousPalmTime && palmTime > previousPalmTime) {
         const sampleDt = (palmTime - previousPalmTime) / 1000;
@@ -62,7 +63,7 @@ export function createOrbInteraction() {
       }
     } else {
       integrate(dt);
-      if (palm) collideWithPalm(palm, Math.max(0.045, palmWidth * 0.72), palmVelocity, dt);
+      if (palm) collideWithPalm(palm, Math.max(0.045, palmWidth * 0.72), palmVelocity, dt, priorPalm);
       if (palm && gesture === "CLOSED" && length(orb.x - palm.x, orb.y - (palm.y - palmWidth * 0.9)) < 0.2) {
         orb.mode = "grabbed";
         orb.x = palm.x;
@@ -104,8 +105,8 @@ export function createOrbInteraction() {
 
   // Swept palm collision: test the orb against the segment travelled by the
   // palm since the last vision sample, not just a single instantaneous point.
-  function collideWithPalm(palm, palmRadius, velocity, dt) {
-    const start = previousPalm ?? palm;
+  function collideWithPalm(palm, palmRadius, velocity, dt, priorPalm) {
+    const start = priorPalm ?? palm;
     const dx = palm.x - start.x;
     const dy = palm.y - start.y;
     const segmentLengthSq = dx * dx + dy * dy;
