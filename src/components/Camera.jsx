@@ -4,6 +4,7 @@ import { createHandLandmarker } from "../engines/handTracking";
 import { createGestureTracker } from "../engines/gestureTracking";
 import { createPerformanceMonitor } from "../engines/performanceMonitor";
 import { createPalmTracker } from "../engines/palmTracking";
+import { createOrbInteraction } from "../engines/orbInteraction";
 import "./Camera.css";
 
 const HAND_CONNECTIONS = [
@@ -38,6 +39,7 @@ export default function Camera() {
   const gestureTrackerRef = useRef(createGestureTracker());
   const performanceMonitorRef = useRef(createPerformanceMonitor());
   const palmTrackerRef = useRef(createPalmTracker());
+  const orbInteractionRef = useRef(createOrbInteraction());
   const metricsRef = useRef({ ...EMPTY_METRICS });
   const lastPublishRef = useRef(0);
   const previousPalmRef = useRef(null);
@@ -49,6 +51,7 @@ export default function Camera() {
   const [lowLightView, setLowLightView] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [metrics, setMetrics] = useState({ ...EMPTY_METRICS });
+  const [orbStatus, setOrbStatus] = useState("WAITING FOR HAND");
 
   async function enableCamera() {
     if (streamRef.current) return;
@@ -87,6 +90,8 @@ export default function Camera() {
     performanceMonitorRef.current.reset();
     previousPalmRef.current = null;
     palmTrackerRef.current.reset();
+    orbInteractionRef.current.reset();
+    setOrbStatus("WAITING FOR HAND");
     metricsRef.current = { ...EMPTY_METRICS };
     setMetrics({ ...EMPTY_METRICS });
     clearOverlay();
@@ -163,17 +168,16 @@ export default function Camera() {
         const firstHand = hands[0];
         const rawPalm = firstHand ? getPalmCenter(firstHand) : null;
         const smoothedPalm = palmTrackerRef.current.update(rawPalm, inferenceEnd);
-        drawHands(canvas, hands, smoothedPalm);
+        const palm = smoothedPalm ?? rawPalm;
+        const now = inferenceEnd;
 
         metricsRef.current.handCount = hands.length;
         metricsRef.current.landmarkCount = hands.reduce((total, hand) => total + hand.length, 0);
 
-        if (firstHand) {
-          const palm = smoothedPalm ?? getPalmCenter(firstHand);
-          const now = performance.now();
+        let gesture = "PARTIAL";
+        if (firstHand && palm) {
           const previousPalm = previousPalmRef.current;
           let velocity = null;
-
           if (previousPalm) {
             const elapsedSeconds = (now - previousPalm.time) / 1000;
             if (elapsedSeconds > 0) {
@@ -182,14 +186,14 @@ export default function Camera() {
               velocity = Math.hypot(dx, dy) / elapsedSeconds;
             }
           }
-
           previousPalmRef.current = { x: palm.x, y: palm.y, time: now };
           metricsRef.current.palmX = Math.round(palm.x * 100);
           metricsRef.current.palmY = Math.round(palm.y * 100);
           metricsRef.current.palmVelocity = velocity === null ? null : Number(velocity.toFixed(1));
+          gesture = gestureTrackerRef.current.update(firstHand, now);
 
           const nextHandInfo = {
-            state: gestureTrackerRef.current.update(firstHand, now),
+            state: gesture,
             x: Math.round(palm.x * 100),
             y: Math.round(palm.y * 100),
             count: hands.length,
@@ -212,6 +216,21 @@ export default function Camera() {
           setHandInfo(null);
         }
 
+        const palmWidth = firstHand
+          ? Math.hypot(firstHand[5].x - firstHand[17].x, firstHand[5].y - firstHand[17].y)
+          : 0.12;
+        const orb = orbInteractionRef.current.update({ palm, palmWidth, gesture, now });
+        drawHands(canvas, hands);
+        drawOrb(canvas, orb);
+        const nextOrbStatus = orb.mode === "grabbed"
+          ? "GRABBED · MOVE YOUR HAND"
+          : orb.mode === "falling"
+            ? "IN PLAY · HIT WITH YOUR PALM"
+            : firstHand
+              ? "CLOSE FIST TO GRAB"
+              : "WAITING FOR HAND";
+        setOrbStatus((previous) => previous === nextOrbStatus ? previous : nextOrbStatus);
+
         publishMetrics(inferenceEnd);
       }
 
@@ -230,6 +249,7 @@ export default function Camera() {
       gestureTrackerRef.current.reset();
       previousPalmRef.current = null;
       palmTrackerRef.current.reset();
+      orbInteractionRef.current.reset();
       clearOverlay();
     };
   }, [isActive]);
@@ -284,6 +304,7 @@ export default function Camera() {
           </div>
         )}
         <div className="viewport-tag">PHYSIX / INPUT 01</div>
+        {isActive && <div className="orb-interaction-hint">{orbStatus}</div>}
         {dashboardOpen && (
           <section className="vision-dashboard" id="vision-dashboard" aria-label="Vision performance dashboard">
             <div className="dashboard-heading">
@@ -345,7 +366,7 @@ function getPalmCenter(landmarks) {
   };
 }
 
-function drawHands(canvas, hands, trackedPalm) {
+function drawHands(canvas, hands) {
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -367,44 +388,43 @@ function drawHands(canvas, hands, trackedPalm) {
       context.fill();
     }
 
-    const palm = handIndex === 0 && trackedPalm ? trackedPalm : getPalmCenter(landmarks);
+    const palm = getPalmCenter(landmarks);
     context.beginPath();
     context.arc(palm.x * canvas.width, palm.y * canvas.height, Math.max(6, canvas.width / 100), 0, Math.PI * 2);
     context.strokeStyle = "#f4c96b";
     context.lineWidth = Math.max(2, canvas.width / 300);
     context.stroke();
 
-    if (handIndex === 0) drawAnchoredOrb(context, canvas, palm, landmarks);
   }
 }
 
-function drawAnchoredOrb(context, canvas, palm, landmarks) {
-  const palmWidth = Math.hypot(
-    landmarks[5].x - landmarks[17].x,
-    landmarks[5].y - landmarks[17].y,
-  );
-  const radius = Math.max(13, Math.min(34, palmWidth * canvas.width * 0.24));
-  const x = palm.x * canvas.width;
-  const y = (palm.y - palmWidth * 0.9) * canvas.height;
+function drawOrb(canvas, orb) {
+  const context = canvas.getContext("2d");
+  const x = orb.x * canvas.width;
+  const y = orb.y * canvas.height;
+  const radius = orb.radius * canvas.width;
+  const grabbed = orb.mode === "grabbed";
 
   context.save();
-  context.shadowColor = "#55e6ff";
-  context.shadowBlur = radius * 1.2;
-  const glow = context.createRadialGradient(x - radius * 0.3, y - radius * 0.35, radius * 0.08, x, y, radius);
+  context.translate(x, y);
+  context.rotate(orb.spin || 0);
+  context.shadowColor = grabbed ? "#a4ffca" : "#55e6ff";
+  context.shadowBlur = radius * 1.5;
+  const glow = context.createRadialGradient(-radius * 0.3, -radius * 0.35, radius * 0.08, 0, 0, radius);
   glow.addColorStop(0, "#f2ffff");
-  glow.addColorStop(0.28, "#8df4ff");
-  glow.addColorStop(0.72, "#22b8df");
-  glow.addColorStop(1, "#12618f");
+  glow.addColorStop(0.28, grabbed ? "#baffd5" : "#8df4ff");
+  glow.addColorStop(0.72, grabbed ? "#43d991" : "#22b8df");
+  glow.addColorStop(1, grabbed ? "#176b50" : "#12618f");
   context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.arc(0, 0, radius, 0, Math.PI * 2);
   context.fillStyle = glow;
   context.fill();
   context.shadowBlur = 0;
   context.lineWidth = Math.max(1.5, radius * 0.07);
-  context.strokeStyle = "#c9fbff";
+  context.strokeStyle = "#d7ffff";
   context.stroke();
   context.beginPath();
-  context.ellipse(x, y + radius * 1.35, radius * 1.35, radius * 0.28, 0, 0, Math.PI * 2);
+  context.ellipse(0, radius * 1.35, radius * 1.35, radius * 0.28, 0, 0, Math.PI * 2);
   context.strokeStyle = "#72eaffbb";
   context.lineWidth = Math.max(1, radius * 0.045);
   context.stroke();
