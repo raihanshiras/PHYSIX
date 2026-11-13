@@ -51,6 +51,7 @@ export default function Camera() {
   const [visionStatus, setVisionStatus] = useState("not-started");
   const [handInfo, setHandInfo] = useState(null);
   const [lowLightView, setLowLightView] = useState(false);
+  const [cameraOpacity, setCameraOpacity] = useState(28);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [metrics, setMetrics] = useState({ ...EMPTY_METRICS });
   const [orbStatus, setOrbStatus] = useState("WAITING FOR HAND");
@@ -304,12 +305,25 @@ export default function Camera() {
             <span className="dashboard-toggle-icon">▦</span>
             {dashboardOpen ? "HIDE DASHBOARD" : "SHOW DASHBOARD"}
           </button>
+          <label className="camera-opacity-control" title="Adjust how visible the webcam background is">
+            <span>CAMERA</span>
+            <input
+              type="range"
+              min="10"
+              max="50"
+              step="1"
+              value={cameraOpacity}
+              onChange={(event) => setCameraOpacity(Number(event.target.value))}
+              aria-label="Camera background visibility"
+            />
+            <output>{cameraOpacity}%</output>
+          </label>
           <span className="camera-resolution">LIVE INPUT / VIDEO</span>
         </div>
       </div>
 
       <div className="camera-viewport">
-        <video ref={videoRef} className={isActive ? (lowLightView ? "camera-video is-visible low-light-view" : "camera-video is-visible") : "camera-video"} autoPlay playsInline muted aria-label="Live webcam preview" />
+        <video ref={videoRef} style={{ opacity: cameraOpacity / 100 }} className={isActive ? (lowLightView ? "camera-video is-visible low-light-view" : "camera-video is-visible") : "camera-video"} autoPlay playsInline muted aria-label="Live webcam preview" />
         <canvas ref={canvasRef} className={isActive ? "hand-overlay is-visible" : "hand-overlay"} />
         {!isActive && (
           <div className="camera-placeholder">
