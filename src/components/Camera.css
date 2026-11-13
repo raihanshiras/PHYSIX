@@ -363,3 +363,32 @@
 .vision-dashboard {
   z-index: 6;
 }
+
+
+/* Fine control over the webcam's visual weight behind the physics objects. */
+.camera-opacity-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+}
+.camera-opacity-control input {
+  width: 76px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.camera-opacity-control output {
+  min-width: 30px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+@media (max-width: 600px) {
+  .camera-opacity-control { gap: 5px; }
+  .camera-opacity-control input { width: 58px; }
+}
