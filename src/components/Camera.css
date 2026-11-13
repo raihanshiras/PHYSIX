@@ -35,7 +35,16 @@
   overflow: hidden;
   background: radial-gradient(ellipse at center, #242932 0%, #17191e 65%, #121317 100%);
 }
-.camera-video { display: none; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.camera-video {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  opacity: 0.30;
+  filter: saturate(0.68) brightness(0.82) contrast(0.92);
+  transition: opacity 180ms ease, filter 180ms ease;
+}
 .camera-video.is-visible { display: block; }
 .camera-placeholder { display: grid; justify-items: center; gap: 12px; color: var(--muted); text-align: center; font-size: 0.88rem; }
 .camera-placeholder-icon {
@@ -334,4 +343,23 @@
     padding: 6px 8px;
     font-size: 0.52rem;
   }
+}
+
+
+/* The webcam is a subtle interaction backdrop, not the main visual layer. */
+.camera-viewport {
+  isolation: isolate;
+  background: radial-gradient(ellipse at center, #202a33 0%, #111820 72%, #0b1016 100%);
+}
+.camera-video.is-visible {
+  opacity: 0.28;
+}
+.hand-overlay {
+  z-index: 2;
+}
+.orb-interaction-hint {
+  z-index: 4;
+}
+.vision-dashboard {
+  z-index: 6;
 }
