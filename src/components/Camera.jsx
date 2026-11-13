@@ -392,20 +392,31 @@ function drawHands(canvas, hands, videoWidth, videoHeight) {
   context.clearRect(0, 0, canvas.width, canvas.height);
   const point = (landmark) => mapVideoPoint(landmark.x, landmark.y, canvas, videoWidth, videoHeight);
   for (const landmarks of hands) {
-    context.lineWidth = Math.max(2, canvas.width / 400);
-    context.strokeStyle = "#8be0bd";
-    context.fillStyle = "#ffffff";
+    // High-contrast landmark rendering keeps hands readable over the dimmed
+    // webcam without restoring the full-opacity camera image.
+    context.save();
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.shadowColor = "#65f5c5";
+    context.shadowBlur = Math.max(5, canvas.width / 150);
+    context.lineWidth = Math.max(2.5, canvas.width / 330);
+    context.strokeStyle = "rgba(105, 255, 207, 0.96)";
+    context.fillStyle = "#effff9";
     for (const [start, end] of HAND_CONNECTIONS) {
       const p1 = point(landmarks[start]), p2 = point(landmarks[end]);
       context.beginPath(); context.moveTo(p1.x, p1.y); context.lineTo(p2.x, p2.y); context.stroke();
     }
+    context.shadowBlur = Math.max(3, canvas.width / 260);
     for (const landmark of landmarks) {
       const p = point(landmark);
-      context.beginPath(); context.arc(p.x, p.y, Math.max(3, canvas.width / 220), 0, Math.PI * 2); context.fill();
+      context.beginPath(); context.arc(p.x, p.y, Math.max(3.5, canvas.width / 210), 0, Math.PI * 2); context.fill();
     }
     const p = point(getPalmCenter(landmarks));
-    context.beginPath(); context.arc(p.x, p.y, Math.max(6, canvas.width / 100), 0, Math.PI * 2);
-    context.strokeStyle = "#f4c96b"; context.lineWidth = Math.max(2, canvas.width / 300); context.stroke();
+    context.shadowColor = "#ffc96b";
+    context.shadowBlur = Math.max(8, canvas.width / 100);
+    context.beginPath(); context.arc(p.x, p.y, Math.max(7, canvas.width / 95), 0, Math.PI * 2);
+    context.strokeStyle = "#ffd27d"; context.lineWidth = Math.max(2.5, canvas.width / 280); context.stroke();
+    context.restore();
   }
 }
 
