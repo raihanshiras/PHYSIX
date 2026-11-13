@@ -1,208 +1,96 @@
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const magnitude = (x, y) => Math.hypot(x, y);
-
+const length = (x, y) => Math.hypot(x, y);
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+function closest(point, a, b) {
+  const dx=b.x-a.x, dy=b.y-a.y, d=dx*dx+dy*dy;
+  const t=d>1e-8?clamp(((point.x-a.x)*dx+(point.y-a.y)*dy)/d,0,1):0;
+  return {x:a.x+dx*t,y:a.y+dy*t};
+}
 export function createOrbInteraction() {
-  const orb = { mode: "idle", x: 0.5, y: 0.5, vx: 0, vy: 0, radius: 0.026, spin: 0 };
-  let previousPalm = null;
-  let previousPalmTime = 0;
-  let lastFrameTime = 0;
-  let palmVelocity = { x: 0, y: 0 };
-  let lastImpactTime = 0;
-  let contactLockUntil = 0;
-
+  const orb={mode:"idle",x:0.5,y:0.5,vx:0,vy:0,radius:0.026,spin:0};
+  let previousPalm=null, previousPalmTime=0, lastFrameTime=0;
+  let velocity={x:0,y:0}, grabOffset={x:0,y:-0.12}, lastImpact=0, lostHandAt=0;
   function reset() {
-    Object.assign(orb, { mode: "idle", x: 0.5, y: 0.5, vx: 0, vy: 0, spin: 0 });
-    previousPalm = null;
-    previousPalmTime = 0;
-    lastFrameTime = 0;
-    palmVelocity = { x: 0, y: 0 };
-    lastImpactTime = 0;
-    contactLockUntil = 0;
+    Object.assign(orb,{mode:"idle",x:0.5,y:0.5,vx:0,vy:0,spin:0});
+    previousPalm=null; previousPalmTime=0; lastFrameTime=0;
+    velocity={x:0,y:0}; grabOffset={x:0,y:-0.12}; lastImpact=0; lostHandAt=0;
   }
+  function update({palm,landmarks=null,palmWidth=0.12,gesture="PARTIAL",now=performance.now(),palmTime=now}) {
+    const dt=lastFrameTime?clamp((now-lastFrameTime)/1000,0,0.05):0;
+    lastFrameTime=now;
+    if(palm && palmTime!==previousPalmTime) {
+      if(previousPalm && palmTime>previousPalmTime) {
+        const sampleDt=clamp((palmTime-previousPalmTime)/1000,1/120,0.12);
+        const raw={x:clamp((palm.x-previousPalm.x)/sampleDt,-3.2,3.2),y:clamp((palm.y-previousPalm.y)/sampleDt,-3.2,3.2)};
+        if(length(raw.x,raw.y)<3.8) {
+          const a=1-Math.exp(-sampleDt/0.075);
+          velocity.x+=(raw.x-velocity.x)*a; velocity.y+=(raw.y-velocity.y)*a;
+        }
+      } else velocity={x:0,y:0};
+      previousPalm={x:palm.x,y:palm.y}; previousPalmTime=palmTime; lostHandAt=0;
+    } else if(!palm && !lostHandAt) lostHandAt=now;
 
-  function update({ palm, palmWidth = 0.12, gesture = "PARTIAL", now = performance.now(), palmTime = now }) {
-    const dt = lastFrameTime ? clamp((now - lastFrameTime) / 1000, 0, 1 / 30) : 0;
-    lastFrameTime = now;
-
-    const priorPalm = previousPalm ? { ...previousPalm } : null;
-    const isNewPalmSample = Boolean(palm && palmTime !== previousPalmTime);
-    if (isNewPalmSample) {
-      if (priorPalm && previousPalmTime && palmTime > previousPalmTime) {
-        const sampleDt = Math.max(0.001, (palmTime - previousPalmTime) / 1000);
-        const rawVx = clamp((palm.x - priorPalm.x) / sampleDt, -4.5, 4.5);
-        const rawVy = clamp((palm.y - priorPalm.y) / sampleDt, -4.5, 4.5);
-        // Keep fast intentional flicks while filtering single-frame landmark spikes.
-        palmVelocity = {
-          x: palmVelocity.x * 0.35 + rawVx * 0.65,
-          y: palmVelocity.y * 0.35 + rawVy * 0.65,
-        };
-      } else {
-        palmVelocity = { x: 0, y: 0 };
-      }
-      previousPalm = { x: palm.x, y: palm.y };
-      previousPalmTime = palmTime;
-    } else if (!palm) {
-      previousPalm = null;
-      previousPalmTime = 0;
-      palmVelocity = { x: 0, y: 0 };
-    }
-
-    if (orb.mode === "idle") {
-      if (palm) {
-        orb.x = palm.x;
-        orb.y = palm.y - palmWidth * 0.9;
-        if (gesture === "CLOSED") orb.mode = "grabbed";
-      }
-    } else if (orb.mode === "grabbed") {
-      if (!palm) {
-        orb.mode = "falling";
-        orb.vx = 0;
-        orb.vy = 0;
-      } else {
-        orb.x = palm.x;
-        orb.y = palm.y - palmWidth * 0.9;
-        if (gesture === "OPEN") {
-          orb.mode = "falling";
-          orb.vx = clamp(palmVelocity.x * 0.9, -2.8, 2.8);
-          orb.vy = clamp(palmVelocity.y * 0.9, -2.8, 2.8);
-          contactLockUntil = now + 100;
+    if(orb.mode==="idle" && palm) {
+      orb.x=clamp(palm.x+grabOffset.x,orb.radius,1-orb.radius);
+      orb.y=clamp(palm.y+grabOffset.y,orb.radius,1-orb.radius);
+      if(gesture==="CLOSED") { orb.mode="grabbed"; grabOffset={x:orb.x-palm.x,y:orb.y-palm.y}; velocity={x:0,y:0}; }
+    } else if(orb.mode==="grabbed") {
+      if(!palm || (lostHandAt && now-lostHandAt>180)) { orb.mode="falling"; orb.vx=0; orb.vy=0; }
+      else {
+        orb.x=clamp(palm.x+grabOffset.x,orb.radius,1-orb.radius);
+        orb.y=clamp(palm.y+grabOffset.y,orb.radius,1-orb.radius);
+        if(gesture==="OPEN") {
+          orb.mode="falling";
+          orb.vx=clamp(velocity.x*0.92,-1.8,1.8);
+          orb.vy=clamp(velocity.y*0.92,-1.8,1.8);
+          lastImpact=now;
         }
       }
     } else {
       integrate(dt);
-
-      if (palm && now >= contactLockUntil) {
-        collideWithMovingPalm(palm, palmWidth, palmVelocity, priorPalm, now);
-        // Bottom-of-frame scoop assist: an upward palm motion can lift a ball
-        // resting on the floor even when the wrist/fingers are partly cropped
-        // and the gesture classifier cannot confidently see a complete fist.
-        const bottomScoop = orb.y > 0.84 &&
-          palm.y > 0.68 &&
-          Math.abs(orb.x - palm.x) < 0.25 &&
-          palmVelocity.y < -0.12;
-        if (bottomScoop && now - lastImpactTime > 180) {
-          orb.vy = Math.min(orb.vy, -Math.max(0.9, Math.abs(palmVelocity.y) * 0.85));
-          orb.vx += clamp(palmVelocity.x * 0.35, -0.45, 0.45);
-          lastImpactTime = now;
-          contactLockUntil = now + 110;
-        }
-        if (gesture === "CLOSED" && canCatchWithFist(palm, palmWidth)) {
-          orb.mode = "grabbed";
-          orb.x = palm.x;
-          orb.y = palm.y - palmWidth * 0.9;
-          orb.vx = 0;
-          orb.vy = 0;
-          contactLockUntil = now + 160;
-        }
-      }
+      if(palm && landmarks?.length===21) collideWithHand(landmarks,palmWidth,velocity,now);
     }
-
-    return { ...orb };
+    return {...orb};
   }
-
-  function canCatchWithFist(palm, palmWidth) {
-    const grabX = palm.x;
-    const grabY = palm.y - palmWidth * 0.9;
-    const dx = Math.abs(orb.x - grabX);
-    const dy = Math.abs(orb.y - grabY);
-    // A generous lower-screen catch zone compensates for the wrist/palm
-    // reaching the camera frame edge while the ball is resting on the floor.
-    const bottomRescue = orb.y > 0.78 && orb.y > grabY && dx < 0.28 && dy < 0.38;
-    return magnitude(dx, dy) < 0.24 || bottomRescue;
-  }
-
   function integrate(dt) {
-    if (dt <= 0) return;
-    // Two small substeps make contact and boundary response less frame-rate sensitive.
-    const steps = 2;
-    const step = dt / steps;
-    for (let i = 0; i < steps; i += 1) {
-      orb.vy += 1.35 * step;
-      orb.x += orb.vx * step;
-      orb.y += orb.vy * step;
-      const drag = Math.exp(-0.10 * step);
-      orb.vx *= drag;
-      orb.vy *= drag;
-      orb.spin += orb.vx * step * 3;
-
-      if (orb.x < orb.radius) {
-        orb.x = orb.radius;
-        orb.vx = Math.abs(orb.vx) * 0.82;
-      } else if (orb.x > 1 - orb.radius) {
-        orb.x = 1 - orb.radius;
-        orb.vx = -Math.abs(orb.vx) * 0.82;
-      }
-      if (orb.y < orb.radius) {
-        orb.y = orb.radius;
-        orb.vy = Math.abs(orb.vy) * 0.76;
-      } else if (orb.y > 1 - orb.radius) {
-        orb.y = 1 - orb.radius;
-        orb.vy = -Math.abs(orb.vy) * 0.82;
-        if (Math.abs(orb.vy) < 0.10) orb.vy = 0;
-      }
+    if(dt<=0)return;
+    const count=Math.max(1,Math.ceil(dt/(1/120))), step=dt/count;
+    for(let i=0;i<count;i++) {
+      orb.vy+=1.05*step; orb.x+=orb.vx*step; orb.y+=orb.vy*step;
+      const drag=Math.exp(-0.16*step); orb.vx*=drag; orb.vy*=drag; orb.spin+=orb.vx*step*2.8;
+      if(orb.x<orb.radius){orb.x=orb.radius;orb.vx=Math.abs(orb.vx)*0.78;}
+      if(orb.x>1-orb.radius){orb.x=1-orb.radius;orb.vx=-Math.abs(orb.vx)*0.78;}
+      if(orb.y<orb.radius){orb.y=orb.radius;orb.vy=Math.abs(orb.vy)*0.72;}
+      if(orb.y>1-orb.radius){orb.y=1-orb.radius;orb.vy=-Math.abs(orb.vy)*0.76;if(Math.abs(orb.vy)<0.08)orb.vy=0;}
     }
   }
-
-  function collideWithMovingPalm(palm, palmWidth, velocity, priorPalm, now) {
-    const palmRadius = Math.max(0.065, palmWidth * 1.05);
-    const start = priorPalm ?? palm;
-    const dx = palm.x - start.x;
-    const dy = palm.y - start.y;
-    const segmentSq = dx * dx + dy * dy;
-    const t = segmentSq > 1e-8
-      ? clamp(((orb.x - start.x) * dx + (orb.y - start.y) * dy) / segmentSq, 0, 1)
-      : 1;
-    const closestX = start.x + dx * t;
-    const closestY = start.y + dy * t;
-    let nx = orb.x - closestX;
-    let ny = orb.y - closestY;
-    const separation = magnitude(nx, ny);
-    const collisionDistance = palmRadius + orb.radius;
-
-    // Wider interaction envelope makes the hand act like a soft paddle rather
-    // than requiring a pixel-perfect touch at one particular angle.
-    const sweptHit = separation <= collisionDistance + 0.025;
-    if (!sweptHit) return;
-
-    if (separation < 1e-4) {
-      const speed = magnitude(velocity.x, velocity.y);
-      if (speed > 0.08) {
-        nx = -velocity.x / speed;
-        ny = -velocity.y / speed;
-      } else {
-        nx = 0;
-        ny = -1;
-      }
-    } else {
-      nx /= separation;
-      ny /= separation;
+  function collideWithHand(points,palmWidth,handVelocity,now) {
+    const fingerRadius=Math.max(0.006,palmWidth*0.105);
+    let best=null;
+    for(const [i,j] of BONES) {
+      const p=closest(orb,points[i],points[j]);
+      const dx=orb.x-p.x,dy=orb.y-p.y,d=length(dx,dy);
+      if(!best||d<best.distance)best={dx,dy,distance:d,core:false};
     }
-
-    const movingSpeed = magnitude(velocity.x, velocity.y);
-    const isFreshImpact = now - lastImpactTime > 180;
-    if (isFreshImpact && movingSpeed > 0.12) {
-      // Primary impulse follows the palm's travel direction, so an upward
-      // swipe lifts the orb even if contact is not perfectly perpendicular.
-      const transfer = clamp(movingSpeed * 0.9, 0.22, 2.9);
-      orb.vx += velocity.x / movingSpeed * transfer;
-      orb.vy += velocity.y / movingSpeed * transfer;
-
-      // Add a small separation impulse to prevent the orb sticking inside hand.
-      const separationImpulse = 0.28;
-      orb.vx += nx * separationImpulse;
-      orb.vy += ny * separationImpulse;
-      lastImpactTime = now;
-      contactLockUntil = now + 110;
+    const center=[0,5,9,13,17].reduce((s,i)=>({x:s.x+points[i].x/5,y:s.y+points[i].y/5}),{x:0,y:0});
+    const pdx=orb.x-center.x,pdy=orb.y-center.y,pd=length(pdx,pdy),coreRadius=palmWidth*0.43;
+    if(!best||pd-coreRadius<best.distance-fingerRadius)best={dx:pdx,dy:pdy,distance:Math.max(0,pd-coreRadius),core:true};
+    const collider=best.core?coreRadius:fingerRadius, collisionDistance=orb.radius+collider;
+    if(best.distance>=collisionDistance)return;
+    let nx=best.dx,ny=best.dy,n=length(nx,ny);
+    if(n<1e-5){const speed=length(handVelocity.x,handVelocity.y);nx=speed>0.08?-handVelocity.x/speed:0;ny=speed>0.08?-handVelocity.y/speed:-1;}
+    else {nx/=n;ny/=n;}
+    const penetration=collisionDistance-best.distance;
+    orb.x+=nx*penetration;orb.y+=ny*penetration;
+    const relative=(orb.vx-handVelocity.x)*nx+(orb.vy-handVelocity.y)*ny;
+    if(relative<0&&now-lastImpact>65) {
+      const impulse=-(1+0.42)*relative;
+      orb.vx+=nx*impulse;orb.vy+=ny*impulse;
+      const tx=-ny,ty=nx,tangent=handVelocity.x*tx+handVelocity.y*ty;
+      orb.vx+=tx*tangent*0.22;orb.vy+=ty*tangent*0.22;
+      orb.vx=clamp(orb.vx,-2.5,2.5);orb.vy=clamp(orb.vy,-2.5,2.5);lastImpact=now;
     }
-
-    // Resolve overlap only when the orb is close enough; do not snap it to a
-    // distant point on the palm's path.
-    if (separation < collisionDistance) {
-      const pushOut = collisionDistance - separation;
-      orb.x += nx * pushOut;
-      orb.y += ny * pushOut;
-    }
+    orb.x=clamp(orb.x,orb.radius,1-orb.radius);orb.y=clamp(orb.y,orb.radius,1-orb.radius);
   }
-
-  return { update, reset };
+  return {update,reset};
 }
