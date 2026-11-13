@@ -154,7 +154,7 @@ export default function Camera() {
         const height = Math.max(1, Math.round(canvas.clientHeight));
         if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
         const vision = latestVisionRef.current;
-        const orb = orbInteractionRef.current.update({ palm: vision.palm, palmWidth: vision.palmWidth, gesture: vision.gesture, palmTime: vision.palmTime, now: performance.now() });
+        const orb = orbInteractionRef.current.update({ palm: vision.palm, landmarks: vision.hands[0] ?? null, palmWidth: vision.palmWidth, gesture: vision.gesture, palmTime: vision.palmTime, now: performance.now() });
         drawHands(canvas, vision.hands, video.videoWidth, video.videoHeight);
         drawOrb(canvas, orb, video.videoWidth, video.videoHeight);
         const nextOrbStatus = orb.mode === "grabbed" ? "GRABBED · MOVE YOUR HAND" : orb.mode === "falling" ? "IN PLAY · HIT WITH YOUR PALM" : vision.palm ? "CLOSE FIST TO GRAB" : "WAITING FOR HAND";
