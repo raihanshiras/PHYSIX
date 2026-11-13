@@ -75,7 +75,7 @@ export function createOrbInteraction() {
     const center=[0,5,9,13,17].reduce((s,i)=>({x:s.x+points[i].x/5,y:s.y+points[i].y/5}),{x:0,y:0});
     const pdx=orb.x-center.x,pdy=orb.y-center.y,pd=length(pdx,pdy),coreRadius=palmWidth*0.43;
     if(!best||pd-coreRadius<best.distance-fingerRadius)best={dx:pdx,dy:pdy,distance:Math.max(0,pd-coreRadius),core:true};
-    const collider=best.core?coreRadius:fingerRadius, collisionDistance=orb.radius+collider;
+    const collisionDistance=orb.radius+(best.core?0:fingerRadius);
     if(best.distance>=collisionDistance)return;
     let nx=best.dx,ny=best.dy,n=length(nx,ny);
     if(n<1e-5){const speed=length(handVelocity.x,handVelocity.y);nx=speed>0.08?-handVelocity.x/speed:0;ny=speed>0.08?-handVelocity.y/speed:-1;}
